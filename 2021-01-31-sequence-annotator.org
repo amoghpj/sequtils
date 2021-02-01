@@ -1,0 +1,93 @@
+:PROPERTIES:
+:ID:       4abde150-0353-4f30-b235-610a97d05ef3
+:END:
+#+PROPERTY: header-args:python :session sequence :tangle yes :comments link 
+#+LATEX_HEADER: \usemintedstyle{tango}%colorful
+#+LATEX_HEADER: \usepackage{xcolor}
+#+LATEX_HEADER: \definecolor{bg}{rgb}{0.9,0.9,0.9}
+#+LATEX_HEADER: \setminted{linenos=True,bgcolor=bg}
+#+LATEX_HEADER: \usepackage[bottom=0.5in,margin=1in]{geometry}
+#+NAME: to_genbank
+#+BEGIN_SRC python :tangle sequtils_convert.py
+  #!/bin/python
+  import os
+  from Bio import Seq, SeqIO
+  from Bio.SeqRecord import SeqRecord
+  from Bio.SeqFeature import SeqFeature
+  from datetime import date
+  from optparse import OptionParser
+
+  def get_opts():
+      parser = OptionParser()
+      parser.add_option("-i", "--input-file", help="Path to input file.")
+      parser.add_option("-s", "--seq-type", default="fasta",
+                        help="Sequence file type.Fast/GenBank.")
+      parser.add_option("-o", "--output-file", help="Name of output file.")    
+      opts, args = parser.parse_args()
+      if not os.path.exists(opts.input_file):
+          print("File does not exist")
+          sys.exit()
+      return(opts, args)
+
+  def convert_to_genbank(input_file, output_file, seq_type="fasta"):
+      d = date.today()
+      print(d)    
+      with open(input_file, "r") as infile:
+          records = SeqIO.parse(input_file, seq_type)
+          records = [SeqRecord(ref.seq, id="1234", name="randseq",
+                               annotations={"molecule_type": "DNA",
+                                            "comment":"last modified on: " + str(d),
+                                            "keywords":["yeast", "primer"]}) for ref in records]
+
+      out = SeqIO.write(records,  output_file, "genbank")
+
+  def main():
+      opts, args = get_opts()
+      convert_to_genbank(opts.input_file, opts.output_file,
+                         seq_type=opts.seq_type)
+
+  if __name__ == '__main__':
+      main()
+#+END_SRC
+
+
+#+begin_src bash
+python sequtils_convert.py -i Iso1-AG66.fasta -o test.gb
+#+end_src
+
+#+RESULTS:
+: 2021-01-31
+
+
+#+begin_src python :results output
+    from datetime import date
+    print(date.today())
+#+end_src
+
+#+RESULTS:
+: 2021-01-31
+
+#+begin_src emacs-lisp
+  (defun sequtils-do-convert (&optional args)
+    (interactive (list (transient-args 'sequtils-interface)))
+    (message "%s" args)
+    (shell-command (concat "sequtils_convert.py " (string-join args " ")))
+    )
+
+  (define-transient-command sequtils-interface ()
+    "Help commands that I use. A subset of C-h with others thrown in."
+    ["Sequence converter"
+     ("=i" "input file" "--input-file=")
+     ("=o" "output file" "--output-file=")
+     ]
+    [""
+     ("c" "convert!" sequtils-do-convert)]
+    )
+
+  (sequtils-interface)
+
+    ;; (shell-command-to-string "python sequtils_convert.py -i "))
+#+end_src
+# Local Variables:
+# eval: (add-hook 'after-save-hook (lambda () (org-babel-tangle) (call-process-shell-command "python 2021-01-31-sequence-annotator.py" nil "*2021-01-31-sequence-annotator compilation*" t)) nil t)
+# End:
