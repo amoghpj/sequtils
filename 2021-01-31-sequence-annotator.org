@@ -8,57 +8,128 @@
   :PROPERTIES:
   :ID:       420ac802-46b8-42da-a1a2-9ccf7c3b7137
   :END:
+
+  Comprehensive biopython tutorial http://biopython.org/DIST/docs/tutorial/Tutorial.htlm
 #+NAME: convert_to_genbank
-#+BEGIN_SRC python :tangle sequtils_convert.py
+#+BEGIN_SRC python :tangle sequtils_convert.py :noweb yes
   #!/bin/python
   import os
   from Bio import Seq, SeqIO
   from Bio.SeqRecord import SeqRecord
-  from Bio.SeqFeature import SeqFeature
+  from Bio.SeqFeature import SeqFeature, FeatureLocation
   from datetime import date
+  import sys
   from optparse import OptionParser
+  <<get_reading_frames>>
 
   def get_opts():
       parser = OptionParser()
       parser.add_option("-i", "--input-file", help="Path to input file.")
       parser.add_option("-s", "--seq-type", default="fasta",
                         help="Sequence file type.Fast/GenBank.")
-      parser.add_option("-o", "--output-file", help="Name of output file.")    
+      parser.add_option("-o", "--output-file", default=None,
+                        help="Name of output file.")
+      parser.add_option("-g", "--organism", default="S. cerevisiae",
+                        help="Name of organism")
+      parser.add_option("-n", "--notes", default="",
+                        help="Free text notes")
+      parser.add_option("-a", "--name", default="",
+                        help="Name of locus")                
       opts, args = parser.parse_args()
-      if not os.path.exists(opts.input_file):
+      home = os.path.expanduser("~")
+      inpfile = opts.input_file.replace("~/", home +"/")
+      if not os.path.exists(inpfile):
           print("File does not exist")
           sys.exit()
       return(opts, args)
 
-  def convert_to_genbank(input_file, output_file, seq_type="fasta"):
+  def add_to_existing(record, key, st):
+      if key in record.annotations.keys():
+          if type(record.annotations[key]) is str:
+              annot = [record.annotations[key]]
+          else:
+              annot = record.annotations[key]
+      else:
+          annot = []
+      if type(st) is str:
+          annot.append(st)        
+      else:
+          annot.extend(st)
+      if key == 'comment':
+          annot = '\n'.join(annot)
+      return(annot)
+
+  def convert_to_genbank(input_file,
+                         output_file,
+                         organism,
+                         notes,
+                         seq_type="fasta"):
       d = date.today()
-      print(d)    
       with open(input_file, "r") as infile:
           records = SeqIO.parse(input_file, seq_type)
-          records = [SeqRecord(ref.seq, id="1234", name="randseq",
-                               annotations={"molecule_type": "DNA",
-                                            "comment":"last modified on: " + str(d),
-                                            "keywords":["yeast", "primer"]}) for ref in records]
+          updated_records = []
+          for rec in records:
+              sr = SeqRecord(rec.seq,
+                             id=rec.id,
+                             name=rec.name,
+                             annotations={"molecule_type": "DNA",
+                                          "comment": add_to_existing(rec,
+                                                                     "comment",
+                                                                     "[" + str(d) + "]: " + notes),
+                                          "organism": organism,
+                                          "keywords":add_to_existing(rec,
+                                                                     "keywords",
+                                                                     ["yeast", "primer"])}) 
 
-      out = SeqIO.write(records,  output_file, "genbank")
+              sizes, rframes, ppositions, npositions, strands = get_reading_frames(rec,
+                                                                                   min_prot_len=100)
+              for r, pp, np, s in zip(rframes, ppositions, npositions, strands):
+                  start, end = (int(np.split(":")[0].replace("n[", "")), int(np.split(":")[1].replace("]", "")))
+                  feat = SeqFeature(type="CDS",
+                                    location=FeatureLocation(start, end),
+                                    strand=int(s),
+                                    qualifiers={"name":"ORF (length=%d)" % len(r)})
+                  sr.features.append(feat)
+              updated_records.append(sr)                
+      out = SeqIO.write(updated_records,  output_file, "genbank")
 
   def main():
       opts, args = get_opts()
-      convert_to_genbank(opts.input_file, opts.output_file,
-                         seq_type=opts.seq_type)
+      home = os.path.expanduser("~")
+      input_file = opts.input_file.replace("~/", home +"/")
+
+      organism = opts.organism
+      notes = opts.notes
+      seq_type = opts.seq_type
+      if opts.output_file is None:
+          output_file = input_file.split(".")[0] + ".gb"
+      else:
+          output_file = opts.output_file.replace("~/", home +"/")
+      output_file = home + "/sequences/" + output_file.split("/")[-1] 
+      convert_to_genbank(input_file,
+                         output_file,
+                         organism,
+                         notes,
+                         seq_type=seq_type)
 
   if __name__ == '__main__':
       main()
 #+END_SRC
 
+#+RESULTS: convert_to_genbank
 
-#+begin_src bash
-python sequtils_convert.py -i Iso1-AG66.fasta -o test.gb
+
+#+begin_src bash :results raw
+python sequtils_convert.py -i /home/amogh/sequences/chrII_803351-807351.fsa -o test.gb
 #+end_src
 
-#+RESULTS:
-: 2021-01-31
 
+#+begin_src bash :results output
+python sequtils_convert.py -i test2.gb -o test3.gb -n "retain notes" -s "genbank"
+#+end_src
+
+
+#+RESULTS:
 
 #+begin_src python :results output
     from datetime import date
@@ -72,22 +143,46 @@ python sequtils_convert.py -i Iso1-AG66.fasta -o test.gb
   (defun sequtils-do-convert (&optional args)
     (interactive (list (transient-args 'sequtils-interface)))
     (message "%s" args)
-    (shell-command (concat "sequtils_convert.py " (string-join args " ")))
-    )
+    (shell-command (concat "python /home/amogh/src/sequtils/sequtils_convert.py " (string-join args " "))))
 
   (define-transient-command sequtils-interface ()
     "Help commands that I use. A subset of C-h with others thrown in."
     ["Sequence converter"
-     ("=i" "input file" "--input-file=")
+     ("=i" "input file" "--input-file=" )
+     ;;(sequtils-transient:--input-file)
      ("=o" "output file" "--output-file=")
+     ("=s" "sequence type" "--seq-type=")
+     ("=g" "organism" "--organism=")
+     ("=n" "notes" "--notes=")
      ]
-    [""
-     ("c" "convert!" sequtils-do-convert)]
+    ["Action"
+     ("c" "convert!" sequtils-do-convert)])
+
+  (defun aj/get-sequences ()
+    (split-string (shell-command-to-string "ls ~/sequences/") "\n"))
+
+  ;; (sequtils-interface)
+
+  (transient-define-argument sequtils-transient:--input-file ()
+    :description "Input file"
+    :class 'transient-option
+    :shortarg "i"
+    :prompt "Input file path: "
+    :reader (lambda (_prompt _initial _history)
+              (completing-read _prompt ("a" "b" "C")))
+  )
+
+  (defun aj/helm-sequtils ()
+    (interactive)
+    (helm :sources (helm-build-sync-source "Available sequences"
+                     :candidates (aj/get-sequences)
+                     :action (helm-make-actions
+                              "Open file"
+                              (lambda (_candidate)
+                                (find-file (concat "~/sequences/" _candidate))))))
+
     )
-
-  (sequtils-interface)
-
-    ;; (shell-command-to-string "python sequtils_convert.py -i "))
+  ;; (sequtils-interface)
 #+end_src
 # Local Variables:
 # eval: (add-hook 'after-save-hook (lambda () (org-babel-tangle) (call-process-shell-command "python 2021-01-31-sequence-annotator.py" nil "*2021-01-31-sequence-annotator compilation*" t)) nil t)
