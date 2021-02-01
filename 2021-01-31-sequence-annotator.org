@@ -1,13 +1,14 @@
-:PROPERTIES:
-:ID:       4abde150-0353-4f30-b235-610a97d05ef3
-:END:
 #+PROPERTY: header-args:python :session sequence :tangle yes :comments link 
 #+LATEX_HEADER: \usemintedstyle{tango}%colorful
 #+LATEX_HEADER: \usepackage{xcolor}
 #+LATEX_HEADER: \definecolor{bg}{rgb}{0.9,0.9,0.9}
 #+LATEX_HEADER: \setminted{linenos=True,bgcolor=bg}
 #+LATEX_HEADER: \usepackage[bottom=0.5in,margin=1in]{geometry}
-#+NAME: to_genbank
+* Convert to genbank
+  :PROPERTIES:
+  :ID:       420ac802-46b8-42da-a1a2-9ccf7c3b7137
+  :END:
+#+NAME: convert_to_genbank
 #+BEGIN_SRC python :tangle sequtils_convert.py
   #!/bin/python
   import os
